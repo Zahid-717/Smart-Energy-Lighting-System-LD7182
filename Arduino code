@@ -1,0 +1,135 @@
+#include <DHT.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+// ── WiFi & ThingSpeak ─────────────────────────────────────────
+#define WIFI_SSID     "Wokwi-GUEST"
+#define WIFI_PASSWORD ""
+#define TS_API_KEY    "MA8ECCDCMC5H4DQW"
+#define TS_URL        "http://api.thingspeak.com/update"
+
+// ── Pin Definitions ───────────────────────────────────────────
+#define LDR_PIN      2    // LDR Analog Output → GPIO2
+#define LED_PIN      4    // LED → GPIO4
+#define PIR_PIN      13   // PIR Signal → GPIO13
+#define DHTPIN       15   // DHT22 Data → GPIO15
+#define DHTTYPE      DHT22
+#define TRIG_PIN     5    // HC-SR04 Trigger → GPIO5
+#define ECHO_PIN     18   // HC-SR04 Echo → GPIO18
+
+// ── DHT Sensor Setup ──────────────────────────────────────────
+DHT dht(DHTPIN, DHTTYPE);
+
+// ── Thresholds ────────────────────────────────────────────────
+const int   LIGHT_THRESHOLD    = 2000; // Below = dark
+const float TEMP_THRESHOLD     = 28.0; // °C
+const float DISTANCE_THRESHOLD = 80.0; // cm — person entering
+
+// ── Setup ─────────────────────────────────────────────────────
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(LED_PIN,  OUTPUT);
+  pinMode(PIR_PIN,  INPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  dht.begin();
+
+  Serial.println("=== Smart Energy Lighting System v2.0 ===");
+  Serial.println("Distance(cm), LightValue, Occupancy, Temp(C), LED");
+
+  Serial.print("Connecting to WiFi");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n WiFi Connected!");
+}
+
+// ── Measure Distance (HC-SR04) ────────────────────────────────
+float measureDistance() {
+  // Send ultrasonic pulse
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  // Measure echo return time
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+
+  // Convert to centimetres
+  // Speed of sound = 343m/s = 0.0343 cm/µs
+  // Divide by 2 (there and back)
+  float distance = (duration * 0.0343) / 2.0;
+
+  // Return 999 if no echo received (out of range)
+  if (duration == 0) return 999.0;
+  return distance;
+}
+
+// ── Send to ThingSpeak ────────────────────────────────────────
+void sendToThingSpeak(float distance, int light, 
+                      int occupancy, float temp) {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+   String url = String(TS_URL) +
+             "?api_key=" + TS_API_KEY +
+             "&field1=" + String(distance) +
+             "&field2=" + String(light) +
+             "&field3=" + String(temp) +
+             "&field4=" + String(occupancy);
+    http.begin(url);
+    int responseCode = http.GET();
+    Serial.println("ThingSpeak Code: " + String(responseCode));
+    http.end();
+  } else {
+    Serial.println("WiFi disconnected!");
+  }
+}
+
+// ── Main Loop ─────────────────────────────────────────────────
+void loop() {
+
+  // 1. Read all sensors
+  int   lightValue  = analogRead(LDR_PIN);
+  bool  occupied    = digitalRead(PIR_PIN);
+  float temperature = dht.readTemperature();
+  float distance    = measureDistance();
+  int   ledStatus   = 0;
+
+  // 2. ── INNOVATION: Distance-based false trigger prevention ──
+  //    LED only ON if:
+  //    - Person is CLOSE enough (entering, not passing by)
+  //    - PIR confirms motion
+  //    - Room is dark enough
+  if (distance < DISTANCE_THRESHOLD && 
+      occupied && 
+      lightValue < LIGHT_THRESHOLD) {
+    digitalWrite(LED_PIN, HIGH);
+    ledStatus = 1;
+  } else {
+    digitalWrite(LED_PIN, LOW);
+    ledStatus = 0;
+  }
+
+  // 3. Serial Output
+  if (!isnan(temperature)) {
+    Serial.print("DATA, ");
+    Serial.print(distance);    Serial.print("cm, ");
+    Serial.print(lightValue);  Serial.print(", ");
+    Serial.print(occupied ? "YES" : "NO"); Serial.print(", ");
+    Serial.print(temperature); Serial.print(", ");
+    Serial.println(ledStatus ? "ON" : "OFF");
+
+    // 4. Send to ThingSpeak
+    sendToThingSpeak(distance, lightValue, occupied, temperature);
+
+  } else {
+    Serial.println("ERROR: DHT22 sensor read failed!");
+  }
+
+  delay(15000);
+}
