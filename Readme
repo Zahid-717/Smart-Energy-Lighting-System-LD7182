@@ -1,0 +1,41 @@
+# Smart Energy Lighting System v2.0
+## LD7182 — AI for IoT | Northumbria University London
+
+### Project Overview
+An AI-powered IoT system for intelligent indoor 
+lighting control using distance-based false trigger 
+prevention. The system activates lighting only when 
+a person is genuinely entering a room (within 80cm), 
+not merely passing by.
+
+### Hardware Components
+- ESP32-S3 microcontroller
+- HC-SR04 ultrasonic distance sensor (GPIO 5 & 18)
+- PIR motion sensor (GPIO 13)
+- LDR ambient light sensor (GPIO 2)
+- DHT22 temperature sensor (GPIO 15)
+- LED output (GPIO 4)
+
+### Repository Contents
+- sketch.ino — Annotated Arduino source code
+- diagram.json — Wokwi circuit diagram
+- libraries.txt — Required libraries
+- AI_for_IoT_Assessment.ipynb — ML Colab notebook
+- smart_lighting_model.tflite — TFLite edge model
+- smart_lighting_dataset_2024.csv — Training dataset
+- confusion_matrix.png — ML evaluation results
+
+### Simulation
+Run online at:
+https://wokwi.com/projects/460121055098093569
+
+### Cloud Dashboard
+ThingSpeak Channel: Smart Energy Lighting System
+Channel ID: 3323122
+
+### ML Results
+- Model: Random Forest Classifier
+- Accuracy: 91.5%
+- F1 Score: 0.9087
+- TFLite Model size: 3.46KB
+- Dataset: 12,000 records, 11 features
